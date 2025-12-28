@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.1.0, etc.
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    permissions:
+      contents: write  # Required for creating releases
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore MarkdownViewer.csproj
+      
+    - name: Build application
+      run: dotnet build MarkdownViewer.csproj -c Release --no-restore
+      
+    - name: Publish Windows x64
+      run: dotnet publish MarkdownViewer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true --output ./publish/win-x64
+      
+    - name: Publish Windows x86
+      run: dotnet publish MarkdownViewer.csproj -c Release -r win-x86 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true --output ./publish/win-x86
+      
+    - name: Create zip packages
+      run: |
+        # Create zip for x64
+        Compress-Archive -Path "./publish/win-x64/*" -DestinationPath "./MarkdownViewer-${{ github.ref_name }}-win-x64.zip"
+        
+        # Create zip for x86
+        Compress-Archive -Path "./publish/win-x86/*" -DestinationPath "./MarkdownViewer-${{ github.ref_name }}-win-x86.zip"
+      shell: pwsh
+      
+    - name: Extract version from tag
+      id: get_version
+      run: |
+        $version = "${{ github.ref_name }}" -replace '^v', ''
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: "Markdown Viewer ${{ steps.get_version.outputs.version }}"
+        tag_name: ${{ github.ref_name }}
+        body: |
+          # Markdown Viewer ${{ steps.get_version.outputs.version }}
+          
+          **Developed by SmartArt Tech**
+          
+          ## What's New
+          - Bug fixes and improvements
+          - Enhanced markdown rendering
+          - Better file handling
+          
+          ## Download
+          
+          Choose the appropriate version for your system:
+          
+          - **Windows 64-bit**: `MarkdownViewer-${{ github.ref_name }}-win-x64.zip`
+          - **Windows 32-bit**: `MarkdownViewer-${{ github.ref_name }}-win-x86.zip`
+          
+          ## Installation
+          
+          1. Download the appropriate zip file for your system
+          2. Extract the contents to a folder of your choice
+          3. Run `MarkdownViewer.exe`
+          4. Optionally, use "Settings → Set as Default MD Viewer" to handle .md files
+          
+          ## System Requirements
+          
+          - Windows 10 or later
+          - .NET 8 Runtime (included in self-contained builds)
+          
+          ---
+          
+          For support and more information, visit our [GitHub repository](https://github.com/smartarttech/markdown-viewer).
+          
+          © 2024 SmartArt Tech. All rights reserved.
+        files: |
+          ./MarkdownViewer-${{ github.ref_name }}-win-x64.zip
+          ./MarkdownViewer-${{ github.ref_name }}-win-x86.zip
+        draft: false
+        prerelease: false
