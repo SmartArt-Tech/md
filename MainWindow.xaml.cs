@@ -125,7 +125,7 @@ namespace MarkdownViewer
                 return;
             }
             
-            var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+            var lines = markdown.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             bool inCodeBlock = false;
             var codeBlockContent = new List<string>();
             
@@ -439,7 +439,7 @@ namespace MarkdownViewer
         {
             var doc = new FlowDocument();
             doc.PagePadding = new Thickness(0);
-            doc.LineHeight = 1.2;
+            // doc.LineHeight = 1.2;
             
             // Detect language from code content
             string language = DetectCodeLanguage(code);
@@ -872,6 +872,11 @@ namespace MarkdownViewer
                         currentToken = "";
                     }
                     tokens.Add(new CodeToken { Text = c.ToString() });
+                }
+                else if (c == '\r')
+                {
+                    // Skip carriage returns - they'll be handled with the following \n
+                    continue;
                 }
                 else if (c == '\n')
                 {
