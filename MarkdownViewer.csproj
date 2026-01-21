@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <AssemblyTitle>Markdown Viewer</AssemblyTitle>
     <AssemblyDescription>Simple Markdown File Viewer by SmartArt Tech</AssemblyDescription>
@@ -20,10 +20,6 @@
 
   <ItemGroup>
     <Resource Include="app.ico" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="System.Printing" />
   </ItemGroup>
 
 </Project>
