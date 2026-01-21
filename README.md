@@ -1,4 +1,4 @@
-![Logo](icon.png)
+[<img src="Resources/icon.png" width="100"/>](Resources/icon.png)
 # Markdown Viewer
 
 A simple Windows application for viewing Markdown (.md) files with WPF.
