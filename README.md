@@ -1,3 +1,4 @@
+![Logo](icon.png)
 # Markdown Viewer
 
 A simple Windows application for viewing Markdown (.md) files with WPF.

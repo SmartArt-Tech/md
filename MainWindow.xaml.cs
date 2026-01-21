@@ -16,6 +16,7 @@ namespace MarkdownViewer
     public partial class MainWindow : Window
     {
         private string currentFilePath = "";
+        private Dictionary<string, FrameworkElement> headerAnchors = new Dictionary<string, FrameworkElement>();
         
         public MainWindow()
         {
@@ -117,6 +118,7 @@ namespace MarkdownViewer
         private void RenderMarkdownToWpf(string markdown)
         {
             contentPanel.Children.Clear();
+            headerAnchors.Clear();
 
             if (string.IsNullOrWhiteSpace(markdown))
             {
@@ -247,6 +249,7 @@ namespace MarkdownViewer
                 level++;
 
             string text = headerLine.Substring(level).Trim();
+            string anchorId = GenerateAnchorId(text);
 
             var headerBox = new TextBox
             {
@@ -282,6 +285,23 @@ namespace MarkdownViewer
 
             AddContextMenu(headerBox);
             contentPanel.Children.Add(headerBox);
+
+            // Register the header for anchor navigation
+            if (!string.IsNullOrEmpty(anchorId) && !headerAnchors.ContainsKey(anchorId))
+            {
+                headerAnchors[anchorId] = headerBox;
+            }
+        }
+
+        private string GenerateAnchorId(string text)
+        {
+            // Convert to lowercase, replace spaces with hyphens, remove special characters
+            string anchor = text.ToLowerInvariant();
+            anchor = Regex.Replace(anchor, @"[^\w\s-]", ""); // Remove special chars except spaces and hyphens
+            anchor = Regex.Replace(anchor, @"\s+", "-"); // Replace spaces with hyphens
+            anchor = Regex.Replace(anchor, @"-+", "-"); // Collapse multiple hyphens
+            anchor = anchor.Trim('-');
+            return anchor;
         }
 
         private void CreateTable(List<string> tableLines)
@@ -384,28 +404,129 @@ namespace MarkdownViewer
         
         private void CreateParagraph(string text)
         {
-            var paragraph = new TextBox
+            // Check if text contains links
+            if (Regex.IsMatch(text, @"\[.+?\]\(.+?\)"))
             {
-                Text = ProcessInlineFormatting(text),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 16),
-                FontSize = 16,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e)),
-                IsReadOnly = true,
-                BorderThickness = new Thickness(0),
-                Background = Brushes.Transparent,
-                Cursor = Cursors.IBeam
-            };
-            
-            AddContextMenu(paragraph);
-            contentPanel.Children.Add(paragraph);
+                // Use TextBlock with Inlines for clickable links
+                var textBlock = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 16),
+                    FontSize = 16,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e))
+                };
+
+                ParseInlineContent(text, textBlock.Inlines);
+                contentPanel.Children.Add(textBlock);
+            }
+            else
+            {
+                var paragraph = new TextBox
+                {
+                    Text = ProcessInlineFormatting(text),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 16),
+                    FontSize = 16,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e)),
+                    IsReadOnly = true,
+                    BorderThickness = new Thickness(0),
+                    Background = Brushes.Transparent,
+                    Cursor = Cursors.IBeam
+                };
+
+                AddContextMenu(paragraph);
+                contentPanel.Children.Add(paragraph);
+            }
+        }
+
+        private void ParseInlineContent(string text, InlineCollection inlines)
+        {
+            // Remove basic markdown formatting first (bold, italic, inline code) but keep links
+            text = Regex.Replace(text, @"\*\*(.+?)\*\*", "$1"); // Bold
+            text = Regex.Replace(text, @"\*(.+?)\*", "$1");     // Italic
+            text = Regex.Replace(text, @"`(.+?)`", "$1");       // Inline code
+
+            // Parse links: [text](url)
+            var linkPattern = @"\[(.+?)\]\((.+?)\)";
+            var matches = Regex.Matches(text, linkPattern);
+
+            int lastIndex = 0;
+            foreach (Match match in matches)
+            {
+                // Add text before the link
+                if (match.Index > lastIndex)
+                {
+                    inlines.Add(new Run(text.Substring(lastIndex, match.Index - lastIndex)));
+                }
+
+                string linkText = match.Groups[1].Value;
+                string linkUrl = match.Groups[2].Value;
+
+                var hyperlink = new Hyperlink(new Run(linkText))
+                {
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x05, 0x69, 0xda)),
+                    TextDecorations = null
+                };
+
+                if (linkUrl.StartsWith("#"))
+                {
+                    // Internal anchor link
+                    string anchorId = linkUrl.Substring(1); // Remove the #
+                    hyperlink.Click += (s, e) => NavigateToAnchor(anchorId);
+                    hyperlink.Cursor = Cursors.Hand;
+                }
+                else
+                {
+                    // External link
+                    hyperlink.NavigateUri = new Uri(linkUrl, UriKind.RelativeOrAbsolute);
+                    hyperlink.RequestNavigate += (s, e) =>
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = e.Uri.AbsoluteUri,
+                                UseShellExecute = true
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            statusText.Text = $"Could not open link: {ex.Message}";
+                        }
+                        e.Handled = true;
+                    };
+                }
+
+                inlines.Add(hyperlink);
+                lastIndex = match.Index + match.Length;
+            }
+
+            // Add remaining text after the last link
+            if (lastIndex < text.Length)
+            {
+                inlines.Add(new Run(text.Substring(lastIndex)));
+            }
+        }
+
+        private void NavigateToAnchor(string anchorId)
+        {
+            // Try to find the header with this anchor
+            if (headerAnchors.TryGetValue(anchorId, out FrameworkElement targetElement))
+            {
+                targetElement.BringIntoView();
+                statusText.Text = $"Navigated to: {anchorId}";
+            }
+            else
+            {
+                statusText.Text = $"Anchor not found: #{anchorId}";
+            }
         }
         
         private void CreateListItem(string listItem)
         {
             string bullet = "• ";
             string text = "";
-            
+
             if (Regex.IsMatch(listItem.Trim(), @"^[-\*\+]\s+"))
             {
                 text = Regex.Replace(listItem.Trim(), @"^[-\*\+]\s+(.+)", "$1");
@@ -416,13 +537,13 @@ namespace MarkdownViewer
                 bullet = match.Groups[1].Value + ". ";
                 text = match.Groups[2].Value;
             }
-            
+
             var listPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Margin = new Thickness(20, 0, 0, 8)
             };
-            
+
             var bulletBlock = new TextBlock
             {
                 Text = bullet,
@@ -431,22 +552,39 @@ namespace MarkdownViewer
                 VerticalAlignment = VerticalAlignment.Top,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e))
             };
-            
-            var textBox = new TextBox
+
+            // Check if text contains links
+            if (Regex.IsMatch(text, @"\[.+?\]\(.+?\)"))
             {
-                Text = ProcessInlineFormatting(text),
-                TextWrapping = TextWrapping.Wrap,
-                FontSize = 16,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e)),
-                IsReadOnly = true,
-                BorderThickness = new Thickness(0),
-                Background = Brushes.Transparent,
-                Cursor = Cursors.IBeam
-            };
-            
-            AddContextMenu(textBox);
-            listPanel.Children.Add(bulletBlock);
-            listPanel.Children.Add(textBox);
+                var textBlock = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 16,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e))
+                };
+                ParseInlineContent(text, textBlock.Inlines);
+                listPanel.Children.Add(bulletBlock);
+                listPanel.Children.Add(textBlock);
+            }
+            else
+            {
+                var textBox = new TextBox
+                {
+                    Text = ProcessInlineFormatting(text),
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 16,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x24, 0x29, 0x2e)),
+                    IsReadOnly = true,
+                    BorderThickness = new Thickness(0),
+                    Background = Brushes.Transparent,
+                    Cursor = Cursors.IBeam
+                };
+
+                AddContextMenu(textBox);
+                listPanel.Children.Add(bulletBlock);
+                listPanel.Children.Add(textBox);
+            }
+
             contentPanel.Children.Add(listPanel);
         }
         
